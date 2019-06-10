@@ -222,7 +222,7 @@ int main(void) {
         getvol( &_vol );
         _time = mktimes( "%a %d %b %H:%M", tz_current );
 
-        snprintf( status, 512, "%s %s 🎜%ld %s", _batt, _ram, _vol, _time );
+        snprintf( status, 512, "%s %s ♪%ld %s", _batt, _ram, _vol, _time );
         setstatus( status, dpy );
 	}
 
