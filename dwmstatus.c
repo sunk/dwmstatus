@@ -1,4 +1,4 @@
-#define _BSD_SOURCE
+#define _DEFAULT_SOURCE
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,78 +9,41 @@
 #include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <alsa/asoundlib.h>
 #include <X11/Xlib.h>
 #include <sys/sysinfo.h>
 
 const char *tz_current = "Australia/Sydney";
-#define VOL_MUTE    "M %d%%"
-#define VOL "V %d%%"
 
-char *
-smprintf(char *fmt, ...)
-{
-	va_list fmtargs;
-	char *ret;
-	int len;
-
-	va_start(fmtargs, fmt);
-	len = vsnprintf(NULL, 0, fmt, fmtargs);
-	va_end(fmtargs);
-
-	ret = malloc(++len);
-	if (ret == NULL) {
-		perror("malloc");
-		exit(1);
-	}
-
-	va_start(fmtargs, fmt);
-	vsnprintf(ret, len, fmt, fmtargs);
-	va_end(fmtargs);
-
-	return ret;
-}
-
-void
-settz(const char *tzname)
-{
+void settz(const char *tzname) {
 	setenv( "TZ", tzname, 1 );
 }
 
-void
-setstatus( char *str, Display *dpy )
-{
+void setstatus( char *str, Display *dpy ) {
     XStoreName(dpy, DefaultRootWindow(dpy), str);
     XSync(dpy, False);
 }
 
-char *
-readfile(char *base, char *file)
-{
-  char *path, line[513];
+const char * readfile( const char *base, const char *file ) {
+  static char line[512];
+  char path[512];
   FILE *fd;
 
-  memset(line, 0, sizeof(line));
+  snprintf( path, sizeof(path), "%s/%s", base, file );
+  fd = fopen( path, "r" );
+  if (fd == NULL) return NULL;
 
-  path = smprintf("%s/%s", base, file);
-  fd = fopen(path, "r");
-  if (fd == NULL)
-    return NULL;
-  free(path);
-
-  if (fgets(line, sizeof(line)-1, fd) == NULL)
+  memset( line, 0, sizeof(line) );
+  if ( fgets(line, sizeof(line)-1, fd) == NULL )
     return NULL;
   fclose(fd);
 
-  return smprintf("%s", line);
+  return line;
 }
 
-char *
-getbattery(char *base)
-{
-    char *co;
+const char * getbattery( const char *base ) {
+    static char ret[512];
+    const char *co;
     char *stat;
-    char *ret;
     char status;
     int descap;
     int remcap;
@@ -96,48 +59,40 @@ getbattery(char *base)
     stat = "Not Charging";
 
     co = readfile( base, "status" );
-    if (co == NULL) {
-        co = "Not Charging";
-    }
-    sscanf(co, "%s", &status);
-    free(co);
+    if ( co == NULL ) { co = "Not Charging"; }
+    sscanf( co, "%s", &status );
 
-    co = readfile(base, "charge_full_design");
+    co = readfile( base, "charge_full_design" );
     if (co == NULL) {
-        co = readfile(base, "energy_full_design");
-        if (co == NULL)
-            return smprintf("");
+        co = readfile( base, "energy_full_design" );
+        if ( co == NULL ) return "";
     }
-    sscanf(co, "%d", &descap);
-    free(co);
+    sscanf( co, "%d", &descap );
 
-    co = readfile(base, "charge_now");
+    co = readfile( base, "charge_now" );
     if (co == NULL) {
-        co = readfile(base, "energy_now");
-        if (co == NULL)
-            return smprintf("");
+        co = readfile( base, "energy_now" );
+        if (co == NULL) return "";
     }
-    sscanf(co, "%d", &remcap);
-    free(co);
+    sscanf( co, "%d", &remcap );
 
-    co = readfile(base, "power_now"); /* µWattage being used */
+    co = readfile( base, "power_now" ); /* µWattage being used */
     if (co == NULL) {
-        co = readfile(base, "voltage_now");
-        sscanf(co, "%lf", &voltage);
-        free(co);
-        co = readfile(base, "current_now");
-        sscanf(co, "%lf", &current);
-        free(co);
+        co = readfile( base, "voltage_now" );
+        sscanf( co, "%lf", &voltage );
+
+        co = readfile( base, "current_now" );
+        sscanf( co, "%lf", &current );
+
         remcap  = (voltage / 1000.0) * ((double)remcap / 1000.0);
         descap  = (voltage / 1000.0) * ((double)descap / 1000.0);
-        using = (voltage / 1000.0) * ((double)current / 1000.0);
+        using   = (voltage / 1000.0) * ((double)current / 1000.0);
+
     } else {
-        sscanf(co, "%lf", &using);
-        free(co);
+        sscanf( co, "%lf", &using );
     }
 
-    if (remcap < 0 || descap < 0)
-        return smprintf("invalid");
+    if (remcap < 0 || descap < 0) return "invalid";
 
     if (status == 'D') {
         remaining = (double)remcap / using;
@@ -153,35 +108,19 @@ getbattery(char *base)
     }
 
     if( stat[0] == 'F' )
-        ret = smprintf( "Charged" );
+        snprintf( ret, sizeof(ret), "Charged" );
     else {
         if ( remaining < 0 )
-            ret = smprintf( "%s: Calculating...", stat );
+            snprintf( ret, sizeof(ret), "%s: Calculating...", stat );
         else
-            ret = smprintf( "%s: %.0lf%%(%.01fH)", stat,
+            snprintf( ret, sizeof(ret), "%s: %.0lf%%(%.01fH)", stat,
                 (((double)remcap / (double)descap) * 100), remaining );
     }
 
-    if(!stat) free(stat);
     return ret;
 }
 
-char *
-get_vol(snd_mixer_t *handle, snd_mixer_elem_t *elem)
-{
-	int mute = 0;
-	long vol, max, min;
-
-	snd_mixer_handle_events(handle);
-	snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-	snd_mixer_selem_get_playback_volume(elem, 0, &vol);
-	snd_mixer_selem_get_playback_switch(elem, 0, &mute);
-
-	return smprintf(mute == 0 ? VOL_MUTE : VOL, (vol * 100) / max);
-}
-
-static const char * mktimes( const char *fmt, const char *tzname )
-{
+const char * mktimes( const char *fmt, const char *tzname ) {
 	static char buf[128];
 	time_t tim;
 	struct tm *timtm;
@@ -202,7 +141,7 @@ static const char * mktimes( const char *fmt, const char *tzname )
     return buf;
 }
 
-static const char * getram(void) {
+char * getram(void) {
     static char ram[128];
     struct sysinfo s;
     sysinfo(&s);
@@ -211,13 +150,11 @@ static const char * getram(void) {
     return ram;
 }
 
-int
-main(void)
-{
-	char *status;
-	char *_time = NULL;
-    char *_batt = NULL;
-    char *_ram = NULL;
+int main(void) {
+	char status[512];
+	const char *_time = NULL;
+    const char *_batt = NULL;
+    const char *_ram = NULL;
     Display *dpy;
 
 	if( !(dpy = XOpenDisplay(NULL)) ) {
@@ -227,14 +164,11 @@ main(void)
 
     for( ;;sleep(5) ) {
         _batt = getbattery( "/sys/class/power_supply/BAT0" );
-        _ram  = (char *)getram();
-        _time = (char *)mktimes( "%a %d %b %H:%M", tz_current );
+        _ram  = getram();
+        _time = mktimes( "%a %d %b %H:%M", tz_current );
 
-        status = smprintf( "%s %s, %s", _batt, _ram, _time );
+        snprintf( status, 512, "%s %s %s", _batt, _ram, _time );
         setstatus( status, dpy );
-
-        free( status );
-        free( _batt );
 	}
 
 	XCloseDisplay(dpy);
