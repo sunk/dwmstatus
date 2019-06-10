@@ -11,6 +11,8 @@
 #include <sys/wait.h>
 #include <X11/Xlib.h>
 #include <sys/sysinfo.h>
+#include <fcntl.h>
+#include <alsa/asoundlib.h>
 
 const char *tz_current = "Australia/Sydney";
 
@@ -120,6 +122,57 @@ const char * getbattery( const char *base ) {
     return ret;
 }
 
+int getvol( long* outvol ) {
+    snd_mixer_t* handle;
+    snd_mixer_elem_t* elem;
+    snd_mixer_selem_id_t* sid;
+
+    static const char* mix_name = "Master";
+    static const char* card = "hw:0";
+    static int mix_index = 0;
+
+    snd_mixer_selem_id_alloca(&sid);
+
+    //sets simple-mixer index and name
+    snd_mixer_selem_id_set_index(sid, mix_index);
+    snd_mixer_selem_id_set_name(sid, mix_name);
+
+    if ((snd_mixer_open(&handle, 0)) < 0) return -1;
+
+    if ((snd_mixer_attach(handle, card)) < 0) {
+        snd_mixer_close(handle);
+        return -2;
+    }
+    if ((snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
+        snd_mixer_close(handle);
+        return -3;
+    }
+    if( snd_mixer_load(handle) < 0 ) {
+        snd_mixer_close(handle);
+        return -4;
+    }
+    elem = snd_mixer_find_selem(handle, sid);
+    if (!elem) {
+        snd_mixer_close(handle);
+        return -5;
+    }
+
+    long minv, maxv;
+    snd_mixer_selem_get_playback_volume_range( elem, &minv, &maxv );
+    if(snd_mixer_selem_get_playback_volume(elem, 0, outvol) < 0) {
+        snd_mixer_close(handle);
+        return -6;
+    }
+    snd_mixer_close(handle);
+
+    maxv -= minv;
+    *outvol -= minv;
+    *outvol *= 100;
+    *outvol /= maxv;
+
+    return 0;
+}
+
 const char * mktimes( const char *fmt, const char *tzname ) {
 	static char buf[128];
 	time_t tim;
@@ -155,6 +208,7 @@ int main(void) {
 	const char *_time = NULL;
     const char *_batt = NULL;
     const char *_ram = NULL;
+    long _vol;
     Display *dpy;
 
 	if( !(dpy = XOpenDisplay(NULL)) ) {
@@ -165,9 +219,10 @@ int main(void) {
     for( ;;sleep(5) ) {
         _batt = getbattery( "/sys/class/power_supply/BAT0" );
         _ram  = getram();
+        getvol( &_vol );
         _time = mktimes( "%a %d %b %H:%M", tz_current );
 
-        snprintf( status, 512, "%s %s %s", _batt, _ram, _time );
+        snprintf( status, 512, "%s %s 🎜%ld %s", _batt, _ram, _vol, _time );
         setstatus( status, dpy );
 	}
 
