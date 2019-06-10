@@ -14,15 +14,20 @@
 #include <fcntl.h>
 #include <alsa/asoundlib.h>
 
+// set timezone
 const char *tz_current = "Australia/Sydney";
+
+// check /proc/asound
+const char* sound_card = "hw:0";
 
 void settz(const char *tzname) {
 	setenv( "TZ", tzname, 1 );
 }
 
-void setstatus( char *str, Display *dpy ) {
-    XStoreName(dpy, DefaultRootWindow(dpy), str);
-    XSync(dpy, False);
+void setstatus( const char *str, Display *dpy ) {
+    if( dpy == NULL ) return;
+    XStoreName( dpy, DefaultRootWindow(dpy), str );
+    XSync( dpy, False );
 }
 
 const char * readfile( const char *base, const char *file ) {
@@ -128,7 +133,6 @@ int getvol( long* outvol ) {
     snd_mixer_selem_id_t* sid;
 
     static const char* mix_name = "Master";
-    static const char* card = "hw:0";
     static int mix_index = 0;
 
     snd_mixer_selem_id_alloca(&sid);
@@ -139,7 +143,7 @@ int getvol( long* outvol ) {
 
     if ((snd_mixer_open(&handle, 0)) < 0) return -1;
 
-    if ((snd_mixer_attach(handle, card)) < 0) {
+    if ((snd_mixer_attach(handle, sound_card)) < 0) {
         snd_mixer_close(handle);
         return -2;
     }
@@ -209,12 +213,9 @@ int main(void) {
     const char *_batt = NULL;
     const char *_ram = NULL;
     long _vol;
-    Display *dpy;
 
-	if( !(dpy = XOpenDisplay(NULL)) ) {
-		fprintf(stderr, "dwmstatus: cannot open display.\n");
-		return 1;
-	}
+    Display* dpy;
+    dpy = XOpenDisplay( NULL );
 
     for( ;;sleep(5) ) {
         _batt = getbattery( "/sys/class/power_supply/BAT0" );
@@ -226,6 +227,6 @@ int main(void) {
         setstatus( status, dpy );
 	}
 
-	XCloseDisplay(dpy);
+    XCloseDisplay( dpy );
 	return 0;
 }
