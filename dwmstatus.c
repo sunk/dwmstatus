@@ -20,6 +20,9 @@ const char *tz_current = "Australia/Sydney";
 // check /proc/asound
 const char* sound_card = "hw:0";
 
+// check /sys/class/power_supply
+const char* battery = "/sys/class/power_supply/BAT0";
+
 void settz(const char *tzname) {
 	setenv( "TZ", tzname, 1 );
 }
@@ -218,7 +221,7 @@ int main(void) {
     dpy = XOpenDisplay( NULL );
 
     for( ;;sleep(5) ) {
-        _batt = getbattery( "/sys/class/power_supply/BAT0" );
+        _batt = getbattery( battery );
         _ram  = getram();
         getvol( &_vol );
         _time = mktimes( "%a %d %b %H:%M", tz_current );
