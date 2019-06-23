@@ -4,12 +4,20 @@
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/time.h>
 #include <time.h>
+
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <X11/Xlib.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <sys/sysinfo.h>
+
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <netinet/in.h>
+
+#include <X11/Xlib.h>
 #include <fcntl.h>
 #include <alsa/asoundlib.h>
 
@@ -21,6 +29,9 @@ const char* sound_card = "hw:0";
 
 // check /sys/class/power_supply
 const char* battery = "/sys/class/power_supply/BAT0";
+
+// name of network interface
+const char* interface = "wlp2s0";
 
 void settz(const char *tzname) {
   setenv( "TZ", tzname, 1 );
@@ -174,23 +185,38 @@ char * getram(void) {
     return ram;
 }
 
+char * getip() {
+    int sock;
+    struct ifreq ifr;
+
+    sock = socket( AF_INET, SOCK_DGRAM, 0 );
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy( ifr.ifr_name , interface, IFNAMSIZ - 1 );
+    ioctl( sock, SIOCGIFADDR, &ifr );
+    close( sock );
+
+    return inet_ntoa( ( (struct sockaddr_in *)&ifr.ifr_addr )->sin_addr );
+}
+
 int main(void) {
     char status[512];
-    const char *_time = NULL;
+    const char *_ip  = NULL;
     const char *_batt = NULL;
     const char *_ram = NULL;
+    const char *_time = NULL;
     long _vol;
 
     Display* dpy;
     dpy = XOpenDisplay( NULL );
 
     for( ;;sleep(5) ) {
+        _ip = getip();
         _batt = getbattery( battery );
         _ram  = getram();
         getvol( &_vol );
         _time = mktimes( "%a-%d-%b %H:%M", tz_current );
 
-        snprintf( status, 512, "%s %s ♪%ld %s", _batt, _ram, _vol, _time );
+        snprintf( status, 512, "%s %s %s ♪%ld %s", _ip, _batt, _ram, _vol, _time );
         setstatus( status, dpy );
   }
 
