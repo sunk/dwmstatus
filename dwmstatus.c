@@ -96,11 +96,8 @@ const char * getbattery( const char *base ) {
         sscanf( co, "%d", &remcap );
     }
 
-    if( remcap < 0 || descap < 0 ) {
-        status = '?';
-    }
-
-    if( status == '?' ) return "battery fault";
+    if( status == '?' && ( remcap < 0 || descap < 0 ) )
+        return "battery fault";
 
     snprintf( ret, sizeof(ret), "%c%.0lf%%",
               status, ((double)remcap / (double)descap * 100) );
